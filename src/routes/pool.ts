@@ -112,6 +112,29 @@ export async function poolRoutes(fastify: FastifyInstance) {
   }, async (request) => {
 
     const pools = await prisma.pool.findMany({
+      include: {
+        owner: {
+          select: {
+            name: true
+          }
+        },
+        participants: {
+          select: {
+            id: true,
+            user: {
+              select: {
+                avatarUrl: true,
+              }
+            }
+          },
+          take: 4,
+        },
+        _count: {
+          select: {
+            participants: true,
+          }
+        }
+      },
       where: {
         participants: {
           some: {
@@ -119,79 +142,62 @@ export async function poolRoutes(fastify: FastifyInstance) {
           }
         }
       },
-      include: {
-        _count: {
-          select: {
-            participants: true,
-          }
-        },
-        participants: {
-          select: {
-            id: true,
-
-            user: {
-              select: {
-                avatarUrl: true,
-              }
-            }
-          },
-          take: 4
-        },
-        owner: {
-          select: {
-            id: true,
-            name: true,
-          }
-        },
-      }
     })
 
     return { pools }
 
   })
 
-  fastify.get('/pools/:id', {
+  fastify.get('/pools/:poolId', {
     onRequest: [authenticate],
-  }, async (request) => {
+  }, async (request, reply) => {
     const getPoolParams = z.object({
-      id: z.string(),
+      poolId: z.string(),
     })
 
-    const { id } = getPoolParams.parse(request.params);
+    const { poolId } = getPoolParams.parse(request.params);
 
-    const pool = await prisma.pool.findUnique({
-      where: {
-        id,
-      },
+    const pool = await prisma.pool.findFirst({
       include: {
-        _count: {
+        owner: {
           select: {
-            participants: true,
+            name: true
           }
         },
         participants: {
           select: {
             id: true,
-
             user: {
               select: {
                 avatarUrl: true,
               }
             }
           },
-          take: 4
+          take: 4,
         },
-        owner: {
+        _count: {
           select: {
-            id: true,
-            name: true,
+            participants: true,
           }
-        },
-      }
+        }
+      },
+      where: {
+        id: poolId,
+        participants: {
+          some: {
+            userId: request.user.sub
+          }
+        }
+      },
     })
 
-    return { pool };
+    if(!pool){
+      return reply.status(400).send({
+        message: 'Pool not found.'
+      })
+    }
 
+    return { pool }
   })
 
 }
